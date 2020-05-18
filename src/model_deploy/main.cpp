@@ -15,7 +15,7 @@
 #include "tensorflow/lite/version.h"
 
 #include "uLCD_4DGL.h"
-
+#define bufferLength (32)
 DA7212 audio;
 int16_t waveform[kAudioTxBufferSize];
 InterruptIn pause_b(SW2);
@@ -31,6 +31,7 @@ int mode = 0;  // 0:play  1:select mode  2:select song
 bool uLCD_cls = 0;
 int song[108];
 int noteLength[108];
+char serialInBuffer[bufferLength];
 
 void playNote(int freq) {
   for(int i = 0; i < kAudioTxBufferSize; i++){
@@ -54,16 +55,7 @@ void uLCDprint(void){
     }else if (currentSong == 2){
       uLCD.printf("\nJingle bell\n");
     }
-  }else if (mode == 1){
-    uLCD.locate(1, 1);
-    if (currentSong == 0){
-      uLCD.printf("\nLittle star\n");
-    }else if (currentSong == 1){
-      uLCD.printf("\nLittle bee\n");
-    }else if (currentSong == 2){
-      uLCD.printf("\nJingle bell\n");
-    }
-  }else if (mode == 0){
+  }else{
     uLCD.locate(1, 1);
     if (currentSong == 0){
       uLCD.printf("\nLittle star\n");
@@ -241,34 +233,50 @@ void DNN() {
     }
   }
 }
-
-void signalInput(void) {
-  
-  int i = 0;
-  audio.spk.pause();
-  char serialInBuffer[32];
+DigitalOut green_led(LED2);
+void loadSignal(void)
+{
+  green_led = 0;
+  int i = 0, j = 0;
+  float freq = 0, len = 0;
   int serialCount = 0;
-  while(i < 216) {
-    pc.printf("i = %d\n\n\n", pc.readable());
-    if(pc.readable()) {
-      if(i < 108) {
-        serialInBuffer[serialCount++] = pc.getc();
-        if(serialCount == 5) {
-          serialInBuffer[serialCount] = '\0';
-          song[i++] = (int) atoi(serialInBuffer);
-          serialCount = 0;
-        }
-      }else {
-        serialInBuffer[serialCount++] = pc.getc();
-        if(serialCount == 5) {
-          serialInBuffer[serialCount] = '\0';
-          noteLength[i-108] = (int) atoi(serialInBuffer);
-          serialCount = 0;
-          i++;
-        }
+  audio.spk.pause();
+  uLCD.locate(1, 1);
+  uLCD.printf("\nLoad Signal       \n                  \n");
+  while(i < 120)
+  {
+    if(pc.readable())
+    {
+      serialInBuffer[serialCount] = pc.getc();
+      uLCD.printf("i = %d, %d\n", i, serialInBuffer[serialCount]);
+      serialCount++;
+      if(serialCount == 5)
+      {
+        serialInBuffer[serialCount] = '\0';
+        freq = (float) atof(serialInBuffer);
+        song[i] = freq * 1000;
+        serialCount = 0;
+        i++;
       }
     }
   }
+  while(j < 120)
+  {
+    if(pc.readable())
+    {
+      serialInBuffer[serialCount] = pc.getc();
+      serialCount++;
+      if(serialCount == 5)
+      {
+        serialInBuffer[serialCount] = '\0';
+        len = (float) atof(serialInBuffer);
+        noteLength[j] = len * 1000;
+        serialCount = 0;
+        j++;
+      }
+    }
+  }
+  green_led = 1;
 }
 
 void mode_select(){
@@ -307,7 +315,7 @@ int main(void) {
   pause_b.rise(mode_select);
   confirm_b.rise(confirm);
   uLCD.printf("\nloading\n");
-  signalInput();
+  loadSignal();
   uLCD.printf("\nfinish\n");
   wait(2);
   uLCD.cls();
