@@ -16,28 +16,41 @@
 
 #include "uLCD_4DGL.h"
 #define bufferLength (32)
+#define bufferLength (32)
+#define signalLength (1024)
 DA7212 audio;
 int16_t waveform[kAudioTxBufferSize];
 InterruptIn pause_b(SW2);
 InterruptIn confirm_b(SW3);
 
 Thread threadDNN(osPriorityNormal, 120*1024);
+EventQueue queuethread(32 * EVENTS_EVENT_SIZE);
 
 uLCD_4DGL uLCD(D1, D0, D2);
 Serial pc(USBTX, USBRX);
 
 int currentSong = 0;
-int mode = 0;  // 0:play  1:select mode  2:select song
+int mode = 0; 
 bool uLCD_cls = 0;
-int song[108];
-int noteLength[108];
+int song[120];
+int noteLength[120];
+int serialCount = 0;
+int gesture_index;
 char serialInBuffer[bufferLength];
 
-void playNote(int freq) {
-  for(int i = 0; i < kAudioTxBufferSize; i++){
-    waveform[i] = (int16_t) (sin((double)i * 2. * M_PI/(double) (kAudioSampleFrequency / freq)) * ((1<<16) - 1));
+void playNote(int freq){
+    pc.printf("play = %d\r\n", freq);
+  for (int i = 0; i < kAudioTxBufferSize; i++)
+  {
+    waveform[i] = (int16_t)(sin((double)i * 2. * M_PI / (double)(kAudioSampleFrequency / freq)) * ((1 << 16) - 1));
   }
-  audio.spk.play(waveform, kAudioTxBufferSize);
+  // the loop below will play the note for the duration of 1s
+  
+  for(int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize; ++j)
+  {
+    audio.spk.play(waveform, kAudioTxBufferSize);
+  }
+  
 }
 
 void uLCDprint(void){
@@ -45,27 +58,19 @@ void uLCDprint(void){
     uLCD.cls();
     uLCD_cls = 0;
   }
-  if (mode == 2){
-    uLCD.locate(1, 1);
-    uLCD.printf("\nSelect Song\n");
-    if (currentSong == 0){
-      uLCD.printf("\nLittle star\n");
-    }else if (currentSong == 1){
-      uLCD.printf("\nLittle bee\n");
-    }else if (currentSong == 2){
-      uLCD.printf("\nJingle bell\n");
-    }
-  }else{
-    uLCD.locate(1, 1);
-    if (currentSong == 0){
-      uLCD.printf("\nLittle star\n");
-    }else if (currentSong == 1){
-      uLCD.printf("\nLittle bee\n");
-    }else if (currentSong == 2){
-      uLCD.printf("\nJingle bell\n");
-    }
+  uLCD.locate(1, 1);
+  uLCD.printf("mode = %d\n", mode);
+  uLCD.printf("gesture = %d\n", gesture_index);
+  if (currentSong == 0){
+    uLCD.printf("\nLittle star\n");
+  }else if (currentSong == 1){
+   uLCD.printf("\nLittle  bee\n");
+  }else if (currentSong == 2){
+    uLCD.printf("\nJingle bell\n");
   }
+  return;
 }
+
 // Return the result of the last prediction  Mechian Learning
 int PredictGesture(float* output) {
   // How many times the most recent gesture has been matched in a row
@@ -116,7 +121,7 @@ void DNN() {
   bool got_data = false;
 
   // The gesture index of the prediction
-  int gesture_index;
+
 
   // Set up logging.
   static tflite::MicroErrorReporter micro_error_reporter;
@@ -216,13 +221,14 @@ void DNN() {
           }else{
             currentSong++;
           }
-        }else if (gesture_index == 1){
+        }else if (gesture_index == 2){
           if (currentSong == 0){
             currentSong = 2;
           }else{
             currentSong--;
           }
-        }else if (gesture_index == 2){
+        }else if (gesture_index == 1){
+          mode = 2;
           uLCD_cls = 1;
         }
       }else if (mode == 2){
@@ -238,28 +244,26 @@ void loadSignal(void)
 {
   green_led = 0;
   int i = 0, j = 0;
-  float freq = 0, len = 0;
-  int serialCount = 0;
+  serialCount = 0;
   audio.spk.pause();
   uLCD.locate(1, 1);
-  uLCD.printf("\nLoad Signal\n");
-  while(i < 104)
+  while(i < 120)
   {
     if(pc.readable())
     {
       serialInBuffer[serialCount] = pc.getc();
-//      uLCD.printf("i = %d, %d\n", i, serialInBuffer[serialCount]);
       serialCount++;
       if(serialCount == 5)
       {
         serialInBuffer[serialCount] = '\0';
-        song[i] = (int ) atoi(serialInBuffer);
+        song[i] = (float) atof(serialInBuffer) * 1000;
+        pc.printf("i = %d, %d\r\n", i, song[i]);
         serialCount = 0;
         i++;
       }
     }
   }
-  while(j < 104)
+  while(j < 120)
   {
     if(pc.readable())
     {
@@ -268,13 +272,15 @@ void loadSignal(void)
       if(serialCount == 5)
       {
         serialInBuffer[serialCount] = '\0';
-        noteLength[j] = (int) atoi(serialInBuffer) * 1000;
+        noteLength[j] = (float) atof(serialInBuffer) * 1000;
+        pc.printf("j = %d, %d\r\n", j, noteLength[j]);
         serialCount = 0;
         j++;
       }
     }
   }
   green_led = 1;
+  return;
 }
 
 void mode_select(){
@@ -285,42 +291,42 @@ void confirm(){
   uLCD_cls = 1;
 }
 void playMusic(){
-  for (int i = 0; i < 40; i++){
-      if(mode == 0){
-        int len = noteLength[40*currentSong + i];
-        while(len > 0){
-          for (int j = 0; j < kAudioSampleFrequency / kAudioTxBufferSize; ++j){
-            playNote(song[40 * currentSong + i]);
+      for (int i = 0; i < 40; i++){
+        if(mode == 0){
+          uLCD.cls();
+          uLCD.locate(1, 1);
+          uLCD.printf("mode = %d\n", mode);
+          uLCD.printf("gesture = %d\n", gesture_index);
+          if (currentSong == 0){
+            uLCD.printf("\nLittle star\n");
+          }else if (currentSong == 1){
+          uLCD.printf("\nLittle  bee\n");
+          }else if (currentSong == 2){
+            uLCD.printf("\nJingle bell\n");
           }
-          if (len == 1){
-            audio.spk.pause();
-            wait(0.5);
-            len--;
-          }else{
-            wait(0.5);
-            audio.spk.pause();
-            wait(0.5);
-            len = len - 2;
+          
+          uLCD.printf("Playing...\n");
+          int len = noteLength[40*currentSong + i];
+          while(len--){
+            playNote(song[40 * currentSong + i]);
+            if(len < 1){
+              wait(1.0);
+            }
           }
         }
-      }else{
-        audio.spk.pause();
       }
-    }
 }
-int main(void) {
+int main(int argc, char* argv[]) {
   threadDNN.start(DNN);
   pause_b.rise(mode_select);
   confirm_b.rise(confirm);
   uLCD.printf("\nloading\n");
   loadSignal();
   uLCD.printf("\nfinish\n");
-  wait(2);
+  wait(5);
   uLCD.cls();
 
-  while(1){
-    uLCD.printf("\nmode = %d\n", mode);
-    uLCD.printf("\nsong = %d\n", currentSong);
+  while(true){
     uLCDprint();
     playMusic();
   }
