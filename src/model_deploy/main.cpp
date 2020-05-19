@@ -242,25 +242,24 @@ void loadSignal(void)
   int serialCount = 0;
   audio.spk.pause();
   uLCD.locate(1, 1);
-  uLCD.printf("\nLoad Signal       \n                  \n");
-  while(i < 120)
+  uLCD.printf("\nLoad Signal\n");
+  while(i < 104)
   {
     if(pc.readable())
     {
       serialInBuffer[serialCount] = pc.getc();
-      uLCD.printf("i = %d, %d\n", i, serialInBuffer[serialCount]);
+//      uLCD.printf("i = %d, %d\n", i, serialInBuffer[serialCount]);
       serialCount++;
       if(serialCount == 5)
       {
         serialInBuffer[serialCount] = '\0';
-        freq = (float) atof(serialInBuffer);
-        song[i] = freq * 1000;
+        song[i] = (int ) atoi(serialInBuffer);
         serialCount = 0;
         i++;
       }
     }
   }
-  while(j < 120)
+  while(j < 104)
   {
     if(pc.readable())
     {
@@ -269,8 +268,7 @@ void loadSignal(void)
       if(serialCount == 5)
       {
         serialInBuffer[serialCount] = '\0';
-        len = (float) atof(serialInBuffer);
-        noteLength[j] = len * 1000;
+        noteLength[j] = (int) atoi(serialInBuffer) * 1000;
         serialCount = 0;
         j++;
       }
